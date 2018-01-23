@@ -1,0 +1,20 @@
+#!/bin/ksh
+
+echo "Starting OEM Database Control..."
+
+case "$1" in
+    start)  ACTION=start ;;
+    stop)  ACTION=stop ;;
+    "") echo "Invalid Parameter";exit ;;
+    *) echo "Invalid Parameter";exit ;;
+esac
+
+export ORACLE_SID=testdb1
+emctl $ACTION dbconsole
+
+sleep 5
+
+export ORACLE_SID=testdb2
+emctl $ACTION dbconsole
+
+echo "Finished Starting OEM Database Control!"

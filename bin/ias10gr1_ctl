@@ -1,0 +1,659 @@
+#!/bin/ksh
+
+# +----------------------------------------------------------------------------+
+# |                          Jeffrey M. Hunter                                 |
+# |                      jhunter@idevelopment.info                             |
+# |                         www.idevelopment.info                              |
+# |----------------------------------------------------------------------------|
+# |      Copyright (c) 1998-2015 Jeffrey M. Hunter. All rights reserved.       |
+# |----------------------------------------------------------------------------|
+# | DATABASE : Oracle                                                          |
+# | FILE     : ias10gr1_ctl                                                    |
+# | CLASS    : UNIX Shell Scripts                                              |
+# | PURPOSE  : Used to control all components of Oracle Application Server 10g |
+# |            Release 1. Use this script to start and stop all 10gAS          |
+# |            components as well as checking status.                          |
+# |                                                                            |
+# | USAGE    :                                                                 |
+# |                                                                            |
+# |         ias10gr1_ctl  "start|stop|status"  "infrastructure|middletier|all" |
+# |                                                                            |
+# | NOTE     : As with any code, ensure to test this script in a development   |
+# |            environment before attempting to run it in production.          |
+# +----------------------------------------------------------------------------+
+
+# +----------------------------------------------------------------------------+
+# | ************************************************************************** |
+# | *                     DEFINE ALL GLOBAL VARIABLES                        * |
+# | ************************************************************************** |
+# +----------------------------------------------------------------------------+
+
+VERSION="1.0"
+SCRIPT_NAME_FULL=$0
+SCRIPT_NAME=${SCRIPT_NAME_FULL##*/}
+START_DATE=`date`
+DATE_LOG=`date +%Y%m%d_%H%M`
+CURRENT_YEAR=`${DATE_BIN} +"%Y"`;
+HOSTNAME=`hostname`
+HOSTNAME_UPPER=`hostname | tr -s '[:lower:]' '[:upper:]'`
+SLEEP="sleep 2"
+
+IAS_INFRA_HTTP_SERVER_WELCOME_PAGE_PORT="7777"
+IAS_INFRA_OEM_APP_SERVER_CONTROL_PORT="1810"
+IAS_INFRA_OID_NON_SSL_PORT=3060
+IAS_INFRA_CERT_AUTH_ACCESS_INFO_PORT="4400"
+IAS_MID_HTTP_SERVER_WELCOME_PAGE_PORT="7778"
+IAS_MID_OEM_APP_SERVER_CONTROL_PORT="1811"
+IAS_MID_PORTAL_PORT="7778"
+
+ORACLE_HOME_INFRA=/u01/app/oracle/product/Ora9iASInfra; export ORACLE_HOME
+ORACLE_HOME_MID=/u01/app/oracle/product/Ora9iASMid;export AGENT_HOME
+ORACLE_SID=asdb; export ORACLE_SID
+
+
+# +----------------------------------------------------------------------------+
+# | ************************************************************************** |
+# | *                     DEFINE ALL GLOBAL FUNCTIONS                        * |
+# | ************************************************************************** |
+# +----------------------------------------------------------------------------+
+
+showUsage() {
+
+    echo "USAGE:"
+    echo "ias10gr1_ctl  \"start|stop|status\"  \"infrastructure|middletier|all\" "
+    echo " "
+}
+
+showSignonBanner() {
+
+    echo " "
+    echo "$SCRIPT_NAME - Version $VERSION"
+    echo "Copyright (c) 1998-${CURRENT_YEAR} Jeffrey M. Hunter. All rights reserved."
+    echo " "
+
+}
+
+getOSName() {
+
+    case `uname -s` in
+        *BSD)
+            UNIX_TYPE="bsd" ;;
+        SunOS)
+            case `uname -r` in
+                5.*) UNIX_TYPE="solaris" ;;
+                  *) UNIX_TYPE"sunos" ;;
+            esac
+            ;;
+        Linux)
+            UNIX_TYPE="linux" ;;
+        HP-UX)
+            UNIX_TYPE="hpux" ;;
+        AIX)
+            UNIX_TYPE="aix" ;;
+        *) UNIX_TYPE="unknown" ;;
+    esac
+
+}
+
+setVars() {
+
+    ORACLE_SID=${ORACLE_SID}                 export ORACLE_SID
+    ORACLE_HOME="$1"                         export ORACLE_HOME
+    ORACLE_DOC=${ORACLE_HOME}/doc;           export ORACLE_DOC 
+    LD_LIBRARY_PATH=${ORACLE_HOME}/lib:${ORACLE_HOME}/ctx/lib:/lib:/usr/lib:/usr/local/lib
+                                             export LD_LIBRARY_PATH
+    PATH=${ORACLE_HOME}/bin:${PATH}          export PATH
+    ORA_NLS33=${ORACLE_HOME}/ocommon/nls/admin/data
+                                             export ORA_NLS33
+    TNS_ADMIN=${ORACLE_HOME}/network/admin   export TNS_ADMIN
+
+}
+
+printVars() {
+
+    #echo "ORACLE_SID       : ${ORACLE_SID}"
+    #echo "ORACLE_HOME      : ${ORACLE_HOME}"
+    #echo "ORACLE_DOC       : ${ORACLE_DOC}"
+    #echo "LD_LIBRARY_PATH  : ${LD_LIBRARY_PATH}"
+    #echo "PATH             : ${PATH}"
+    #echo "ORA_NLS33        : ${ORA_NLS33}"
+    #echo "TNS_ADMIN        : ${TNS_ADMIN}"
+
+}
+
+startInfrastructure() {
+
+    echo " "
+    echo "+----------------+"
+    echo "| INFRASTRUCTURE |"
+    echo "|---------------------------------------------------------------------+"
+    echo "| Starting Infrastructure Components                                  |"
+    echo "+---------------------------------------------------------------------+"
+    echo " "
+
+    setVars $ORACLE_HOME_INFRA
+    printVars
+
+    echo " "
+    COMMAND="$ORACLE_HOME/bin/lsnrctl start"
+    echo "+--------------+"
+    echo "| STARTING     |"
+    echo "|------------------------------------------------------------------------+"
+    echo "| TNS Listener                                                           |"
+    echo "| COMMAND: $COMMAND"
+    echo "+------------------------------------------------------------------------+"
+    $COMMAND
+    $SLEEP
+
+    echo " "
+    echo "+--------------+"
+    echo "| STARTING     |"
+    echo "|------------------------------------------------------------------------+"
+    echo "| Identity Management and Metadata Repository (database)                 |"
+    echo "+------------------------------------------------------------------------+"
+    $ORACLE_HOME/bin/sqlplus /nolog <<EOF
+        connect / as sysdba
+        startup
+        exit
+EOF
+    $SLEEP
+
+    echo " "
+    COMMAND="$ORACLE_HOME/opmn/bin/opmnctl startall"
+    echo "+--------------+"
+    echo "| STARTING     |"
+    echo "|------------------------------------------------------------------------+"
+    echo "| Oracle Application Server Components                                   |"
+    echo "| This command starts OPMN and all OPMN-managed processes such as DCM,   |"
+    echo "| Oracle HTTP Server, OC4J instances, and Oracle Internet Directory.     |"
+    echo "| COMMAND: $COMMAND"
+    echo "+------------------------------------------------------------------------+"
+    $COMMAND
+    $SLEEP
+
+    echo " "
+    COMMAND="$ORACLE_HOME/opmn/bin/opmnctl status"
+    echo "+--------------+"
+    echo "| STATUS       |"
+    echo "|------------------------------------------------------------------------+"
+    echo "| Oracle Application Server Components                                   |"
+    echo "| COMMAND: $COMMAND"
+    echo "+------------------------------------------------------------------------+"
+    $COMMAND
+    $SLEEP
+
+    echo " "
+    COMMAND="$ORACLE_HOME/bin/emctl start iasconsole"
+    echo "+--------------+"
+    echo "| STARTING     |"
+    echo "|------------------------------------------------------------------------+"
+    echo "| Oracle Application Server Control Console                              |"
+    echo "| COMMAND: $COMMAND"
+    echo "+------------------------------------------------------------------------+"
+    $COMMAND
+
+    echo " "
+    echo "DONE!"
+    echo " "
+    echo "--> Oracle HTTP Server and the Welcome Page is started on http://`hostname`:${IAS_INFRA_HTTP_SERVER_WELCOME_PAGE_PORT}/"
+    echo "--> OEM Application Server Control is started on http://`hostname`:${IAS_INFRA_OEM_APP_SERVER_CONTROL_PORT}/"
+    echo "--> Oracle Internet Directory (Non SSL Port) is started on port ${IAS_INFRA_OID_NON_SSL_PORT}"
+    echo "--> OracleAS Certification Authority Access Information is started on:"
+    echo "             OCA User Page :  https://`hostname`:${IAS_INFRA_CERT_AUTH_ACCESS_INFO_PORT}/oca/user"
+    echo "             OCA Admin Page:  https://`hostname`:${IAS_INFRA_CERT_AUTH_ACCESS_INFO_PORT}/oca/admin"
+    echo " "
+
+}
+
+stopInfrastructure() {
+
+    echo " "
+    echo "+----------------+"
+    echo "| INFRASTRUCTURE |"
+    echo "|---------------------------------------------------------------------+"
+    echo "| Stopping Infrastructure Components                                  |"
+    echo "+---------------------------------------------------------------------+"
+    echo " "
+
+    setVars $ORACLE_HOME_INFRA
+    printVars
+
+    echo " "
+    COMMAND="$ORACLE_HOME/bin/emctl stop iasconsole"
+    echo "+--------------+"
+    echo "| STOPPING     |"
+    echo "|------------------------------------------------------------------------+"
+    echo "| Oracle Application Server Control Console                              |"
+    echo "| COMMAND: $COMMAND"
+    echo "+------------------------------------------------------------------------+"
+    $COMMAND
+    $SLEEP
+
+    echo " "
+    COMMAND="$ORACLE_HOME/opmn/bin/opmnctl stopall"
+    echo "+--------------+"
+    echo "| STOPPING     |"
+    echo "|------------------------------------------------------------------------+"
+    echo "| Oracle Application Server Components                                   |"
+    echo "| COMMAND: $COMMAND"
+    echo "+------------------------------------------------------------------------+"
+    $COMMAND
+    $SLEEP
+
+    echo " "
+    COMMAND="$ORACLE_HOME/opmn/bin/opmnctl status"
+    echo "+--------------+"
+    echo "| STATUS       |"
+    echo "|------------------------------------------------------------------------+"
+    echo "| Oracle Application Server Components                                   |"
+    echo "| COMMAND: $COMMAND"
+    echo "+------------------------------------------------------------------------+"
+    $COMMAND
+    $SLEEP
+
+    echo " "
+    echo "+--------------+"
+    echo "| STOPPING     |"
+    echo "|------------------------------------------------------------------------+"
+    echo "| Identity Management and Metadata Repository (database)                 |"
+    echo "+------------------------------------------------------------------------+"
+    $ORACLE_HOME/bin/sqlplus /nolog <<EOF
+        connect / as sysdba
+        shutdown immediate
+        exit
+EOF
+    $SLEEP
+
+    echo " "
+    COMMAND="$ORACLE_HOME/bin/lsnrctl stop"
+    echo "+--------------+"
+    echo "| STOPPING     |"
+    echo "|------------------------------------------------------------------------+"
+    echo "| TNS Listener                                                           |"
+    echo "| COMMAND: $COMMAND"
+    echo "+------------------------------------------------------------------------+"
+    $COMMAND
+
+    echo " "
+    echo "DONE!"
+    echo " "
+
+}
+
+statusInfrastructure() {
+
+    echo " "
+    echo "+----------------+"
+    echo "| INFRASTRUCTURE |"
+    echo "|---------------------------------------------------------------------+"
+    echo "| Status of Infrastructure Components                                 |"
+    echo "+---------------------------------------------------------------------+"
+    echo " "
+
+    setVars $ORACLE_HOME_INFRA
+    printVars
+
+    echo " "
+    COMMAND1="$ORACLE_HOME/bin/lsnrctl status"
+    COMMAND2="$ORACLE_HOME/bin/tnsping $ORACLE_SID"
+    echo "+--------------+"
+    echo "| STATUS       |"
+    echo "|------------------------------------------------------------------------+"
+    echo "| TNS Listener                                                           |"
+    echo "| COMMAND1: $COMMAND1"
+    echo "| COMMAND1: $COMMAND2"
+    echo "+------------------------------------------------------------------------+"
+    STATUS=`ps -fu oracle | grep -v grep | grep lsnr`
+    if [[ $? = 0 ]]; then
+        echo "[TNS Listener is ONLINE!]"
+        $COMMAND1
+        $COMMAND2
+    else
+        echo "[TNS Listener is OFFLINE]"
+    fi
+
+    echo " "
+    echo "+--------------+"
+    echo "| STATUS       |"
+    echo "|------------------------------------------------------------------------+"
+    echo "| Identity Management and Metadata Repository (database)                 |"
+    echo "+------------------------------------------------------------------------+"
+    STATUS=`ps -fu oracle | grep -v grep | grep $ORACLE_SID | grep ora_`
+    if [[ $? = 0 ]]; then
+        echo "[Database $ORACLE_SID is ONLINE!]"
+        $ORACLE_HOME/bin/sqlplus -s /nolog <<EOF
+            set head off
+            set verify off
+            connect / as sysdba
+            select '[Successful database login as ' || user || ']'
+            from dual;
+            exit
+EOF
+    else
+        echo "[Database $ORACLE_SID is OFFLINE]"
+    fi
+
+    echo " "
+    COMMAND="$ORACLE_HOME/opmn/bin/opmnctl status"
+    echo "+--------------+"
+    echo "| STATUS       |"
+    echo "|------------------------------------------------------------------------+"
+    echo "| Oracle Application Server Components                                   |"
+    echo "| COMMAND: $COMMAND"
+    echo "+------------------------------------------------------------------------+"
+    $COMMAND
+
+    echo " "
+    COMMAND="$ORACLE_HOME/bin/emctl status iasconsole"
+    echo "+--------------+"
+    echo "| STATUS       |"
+    echo "|------------------------------------------------------------------------+"
+    echo "| Oracle Application Server Control Console                              |"
+    echo "| COMMAND: $COMMAND"
+    echo "+------------------------------------------------------------------------+"
+    $COMMAND
+
+    echo " "
+    echo "DONE!"
+    echo " "
+    echo " "
+    echo "--> Oracle HTTP Server and the Welcome Page is running on http://`hostname`:${IAS_INFRA_HTTP_SERVER_WELCOME_PAGE_PORT}/"
+    echo "--> OEM Application Server Control is running on http://`hostname`:${IAS_INFRA_OEM_APP_SERVER_CONTROL_PORT}/"
+    echo "--> Oracle Internet Directory (Non SSL Port) is running on port ${IAS_INFRA_OID_NON_SSL_PORT}"
+    echo "--> OracleAS Certification Authority Access Information is running on:"
+    echo "             OCA User Page :  https://`hostname`:${IAS_INFRA_CERT_AUTH_ACCESS_INFO_PORT}/oca/user"
+    echo "             OCA Admin Page:  https://`hostname`:${IAS_INFRA_CERT_AUTH_ACCESS_INFO_PORT}/oca/admin"
+    echo " "
+
+}
+
+startMiddletier() {
+
+    echo " "
+    echo "+----------------+"
+    echo "| MIDDLE-TIER    |"
+    echo "|---------------------------------------------------------------------+"
+    echo "| Starting Middle-Tier Components                                     |"
+    echo "+---------------------------------------------------------------------+"
+    echo " "
+
+    setVars $ORACLE_HOME_MID
+    printVars
+
+    echo " "
+    COMMAND="$ORACLE_HOME/opmn/bin/opmnctl startall"
+    echo "+--------------+"
+    echo "| STARTING     |"
+    echo "|------------------------------------------------------------------------+"
+    echo "| Oracle Application Server Components                                   |"
+    echo "| This command starts OPMN and all OPMN-managed processes such as DCM,   |"
+    echo "| Oracle HTTP Server, OC4J instances, and Oracle Internet Directory.     |"
+    echo "| COMMAND: $COMMAND"
+    echo "+------------------------------------------------------------------------+"
+    $COMMAND
+    $SLEEP
+
+    echo " "
+    COMMAND="$ORACLE_HOME/opmn/bin/opmnctl status"
+    echo "+--------------+"
+    echo "| STATUS       |"
+    echo "|------------------------------------------------------------------------+"
+    echo "| Oracle Application Server Components                                   |"
+    echo "| COMMAND: $COMMAND"
+    echo "+------------------------------------------------------------------------+"
+    $COMMAND
+    $SLEEP
+
+    echo " "
+    COMMAND="$ORACLE_HOME/bin/emctl start iasconsole"
+    echo "+--------------+"
+    echo "| STARTING     |"
+    echo "|------------------------------------------------------------------------+"
+    echo "| Oracle Application Server Control Console                              |"
+    echo "| COMMAND: $COMMAND"
+    echo "+------------------------------------------------------------------------+"
+    $COMMAND
+
+    echo " "
+    echo "DONE!"
+    echo " "
+    echo "--> Oracle HTTP Server and the Welcome Page is started on http://`hostname`:${IAS_MID_HTTP_SERVER_WELCOME_PAGE_PORT}/"
+    echo "--> OEM Application Server Control is started on http://`hostname`:${IAS_MID_OEM_APP_SERVER_CONTROL_PORT}/"
+    echo "--> Oracle Portal is started on http://`hostname`:${IAS_MID_PORTAL_PORT}/pls/portal"
+    echo " "
+
+}
+
+stopMiddletier() {
+
+    echo " "
+    echo "+----------------+"
+    echo "| MIDDLE-TIER    |"
+    echo "|---------------------------------------------------------------------+"
+    echo "| Stopping Middle-Tier Components                                     |"
+    echo "+---------------------------------------------------------------------+"
+    echo " "
+
+    setVars $ORACLE_HOME_MID
+    printVars
+
+    echo " "
+    COMMAND="$ORACLE_HOME/bin/emctl stop iasconsole"
+    echo "+--------------+"
+    echo "| STOPPING     |"
+    echo "|------------------------------------------------------------------------+"
+    echo "| Oracle Application Server Control Console                              |"
+    echo "| COMMAND: $COMMAND"
+    echo "+------------------------------------------------------------------------+"
+    $COMMAND
+    $SLEEP
+
+    echo " "
+    COMMAND="$ORACLE_HOME/opmn/bin/opmnctl stopall"
+    echo "+--------------+"
+    echo "| STOPPING     |"
+    echo "|------------------------------------------------------------------------+"
+    echo "| Oracle Application Server Components                                   |"
+    echo "| This command starts OPMN and all OPMN-managed processes such as DCM,   |"
+    echo "| Oracle HTTP Server, OC4J instances, and Oracle Internet Directory.     |"
+    echo "| COMMAND: $COMMAND"
+    echo "+------------------------------------------------------------------------+"
+    $COMMAND
+    $SLEEP
+
+    echo " "
+    COMMAND="$ORACLE_HOME/opmn/bin/opmnctl status"
+    echo "+--------------+"
+    echo "| STATUS       |"
+    echo "|------------------------------------------------------------------------+"
+    echo "| Oracle Application Server Components                                   |"
+    echo "| COMMAND: $COMMAND"
+    echo "+------------------------------------------------------------------------+"
+    $COMMAND
+
+    echo " "
+    echo "DONE!"
+    echo " "
+
+}
+
+statusMiddletier() {
+
+    echo " "
+    echo "+----------------+"
+    echo "| MIDDLE-TIER    |"
+    echo "|---------------------------------------------------------------------+"
+    echo "| Status of Middle-Tier Components                                    |"
+    echo "+---------------------------------------------------------------------+"
+    echo " "
+
+    setVars $ORACLE_HOME_MID
+    printVars
+
+    echo " "
+    COMMAND="$ORACLE_HOME/bin/emctl status iasconsole"
+    echo "+--------------+"
+    echo "| STATUS       |"
+    echo "|------------------------------------------------------------------------+"
+    echo "| Oracle Application Server Control Console                              |"
+    echo "| COMMAND: $COMMAND"
+    echo "+------------------------------------------------------------------------+"
+    $COMMAND
+    $SLEEP
+
+    echo " "
+    COMMAND="$ORACLE_HOME/opmn/bin/opmnctl status"
+    echo "+--------------+"
+    echo "| STATUS       |"
+    echo "|------------------------------------------------------------------------+"
+    echo "| Oracle Application Server Components                                   |"
+    echo "| COMMAND: $COMMAND"
+    echo "+------------------------------------------------------------------------+"
+    $COMMAND
+
+    echo " "
+    echo "DONE!"
+    echo " "
+    echo "--> Oracle HTTP Server and the Welcome Page is running on http://`hostname`:${IAS_MID_HTTP_SERVER_WELCOME_PAGE_PORT}/"
+    echo "--> OEM Application Server Control is running on http://`hostname`:${IAS_MID_OEM_APP_SERVER_CONTROL_PORT}/"
+    echo "--> Oracle Portal is running on http://`hostname`:${IAS_MID_PORTAL_PORT}/pls/portal"
+    echo " "
+
+}
+
+
+# +----------------------------------------------------------------------------+
+# | ************************************************************************** |
+# | *                          SCRIPT STARTS HERE                            * |
+# | ************************************************************************** |
+# +----------------------------------------------------------------------------+
+
+showSignonBanner
+
+if [[ $# -eq 2 ]]; then
+    export IAS_ACTION=$1
+    export START_TYPE=$2
+else
+    showUsage
+    exit 2
+fi
+
+if [[ $START_TYPE != "infrastructure" ]] && [[ $START_TYPE != "middletier" ]] && [[ $START_TYPE != "all" ]]; then
+    echo "ERROR: Component type must be either \"infrastructure\", \"middletier\", or \"all\"."
+    echo " "
+    showUsage
+    exit 2
+fi
+
+if [[ $IAS_ACTION != "start" ]] && [[ $IAS_ACTION != "stop" ]] && [[ $IAS_ACTION != "status" ]]; then
+    echo "ERROR: Action type must be either \"start\", \"stop\", or \"status\"."
+    echo " "
+    showUsage
+    exit 2
+fi
+
+if [[ $ORACLE_HOME_INFRA = "" ]]; then
+    echo "ERROR: \$ORACLE_HOME_INFRA environmnet variable must be set to the"
+    echo "       Infrastructure Oracle home."
+    echo " "
+    showUsage
+    exit 2
+fi
+
+if [[ $ORACLE_HOME_MID = "" ]]; then
+    echo "ERROR: \$ORACLE_HOME_MID environment variable must be set to the"
+    echo "       Middle-Tier Instance home."
+    echo " "
+    showUsage
+    exit 2
+fi
+
+if [[ $ORACLE_SID = "" ]]; then
+    echo "ERROR: \$ORACLE_SID environment variable must be set to the"
+    echo "       Identity Management and Metadata Repository database."
+    echo " "
+    showUsage
+    exit 2
+fi
+
+
+getOSName
+
+if [[ $UNIX_TYPE = "linux" ]]; then
+    ORATAB_FILE="/etc/oratab"
+elif [[ $UNIX_TYPE = "solaris" ]];then
+    ORATAB_FILE="/var/opt/oracle/oratab"
+else
+    ORATAB_FILE="/etc/oratab"
+fi
+
+
+echo "======================================================"
+echo "SCRIPT            : $SCRIPT_NAME"
+echo "VERSION           : $VERSION"
+echo "START TIME        : $START_DATE"
+echo "HOST              : $HOSTNAME"
+echo "UNIX TYPE         : $UNIX_TYPE"
+echo "IAS_ACTION (P1)   : $IAS_ACTION"
+echo "START_TYPE (P2)   : $START_TYPE"
+echo "ORACLE_HOME_INFRA : $ORACLE_HOME_INFRA"
+echo "ORACLE_HOME_MID   : $ORACLE_HOME_MID"
+echo "ORACLE_SID        : $ORACLE_SID"
+echo "======================================================"
+
+
+if [[ $START_TYPE = "infrastructure" ]]; then 
+
+    if [[ $IAS_ACTION = "start" ]]; then
+        startInfrastructure
+    fi
+
+    if [[ $IAS_ACTION = "stop" ]]; then
+        stopInfrastructure
+    fi
+
+    if [[ $IAS_ACTION = "status" ]]; then
+        statusInfrastructure
+    fi
+
+elif [[ $START_TYPE = "middletier" ]]; then
+
+    if [[ $IAS_ACTION = "start" ]]; then
+        startMiddletier
+    fi
+
+    if [[ $IAS_ACTION = "stop" ]]; then
+        stopMiddletier
+    fi
+
+    if [[ $IAS_ACTION = "status" ]]; then
+        statusMiddletier
+    fi
+
+elif [[ $START_TYPE = "all" ]]; then
+
+    if [[ $IAS_ACTION = "start" ]]; then
+        startInfrastructure
+        startMiddletier
+    fi
+
+    if [[ $IAS_ACTION = "stop" ]]; then
+        stopMiddletier
+        stopInfrastructure
+    fi
+
+    if [[ $IAS_ACTION = "status" ]]; then
+        statusInfrastructure
+        statusMiddletier
+    fi
+
+fi
+
+
+END_DATE=`date`
+echo "======================================================"
+echo "FINISH TIME : $END_DATE"
+echo "======================================================"
+
+exit
+

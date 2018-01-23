@@ -1,0 +1,372 @@
+#!/bin/bash
+# chkconfig: 345 99 10
+# description: Oracle auto start-stop script.
+#
+# +------------------------------------------------------------------------+
+# | FILE         : dbora_10g                                               |
+# | ORGANIZATION : iDevelopment.info                                       |
+# | DATE         : 17-APR-2010                                             |
+# | DESCRIPTION  : This script is responsible for starting and stopping    |
+# |                all Oracle components and services on this host. This   |
+# |                version is specific to Oracle Database 10g running on   |
+# |                the Linux OS platform.                                  |
+# | NOTE         : This script may look a little different from a similar  |
+# |                one used for Oracle9i - most notably the omission of    |
+# |                the commands to start/stop the  Oracle TNS listener     |
+# |                process. As of Oracle 10g Release 2 the dbstart script  |
+# |                includes the commands to automatically start/stop the   |
+# |                listener.                                               |
+# | INSTALLATION :                                                         |
+# |                - At the beginning of this script, set all environment  |
+# |                  variables as well as ORA_HOME.                        |
+# |                                                                        |
+# |                - On Linux and Solaris, this script should be copied    |
+# |                  to the /etc/init.d directory.                         |
+# |                                                                        |
+# |                - Edit the /etc/oratab file setting the restart flag    |
+# |                  (the last field) to "Y" for any instance you want to  |
+# |                  automatically startup and shutdown. For example:      |
+# |                                                                        |
+# |                      ...                                               |
+# |                      testdb:/u01/app/oracle/product/10.2.0/db_1:Y      |
+# |                      ...                                               |
+# |                                                                        |
+# |                - Verify this script is executable and owned by root:   |
+# |                                                                        |
+# |                      chown root:root /etc/init.d/dbora_10g             |
+# |                      chmod 755 /etc/init.d/dbora_10g                   |
+# |                                                                        |
+# |                - Associate the dbora_10g service with the appropriate  |
+# |                  run levels and set it to auto-start using the         |
+# |                  following command:                                    |
+# |                                                                        |
+# |                      chkconfig --level 345 dbora_10g on                |
+# |                                                                        |
+# |                  To force the dbora_10g service (this script) to be    |
+# |                  ignored:                                              |
+# |                                                                        |
+# |                      chkconfig --level 345 dbora_10g off               |
+# |                                                                        |
+# +------------------------------------------------------------------------+
+
+
+# +------------------------------------------------------------------------+
+# |                                                                        |
+# |                       DEFINE ALL GLOBAL VARIABLES                      |
+# |                                                                        |
+# +------------------------------------------------------------------------+
+
+# +------------------------------------------------------------------------+
+# | ALTER THE FOLLOWING TO REFLECT THIS SERVER ORACLE SETUP                |
+# +------------------------------------------------------------------------+
+ORA_BASE=/u01/app/oracle
+ORA_HOME=/u01/app/oracle/product/10.2.0/db_1
+ORA_OWNER=oracle
+ORA_PRIMARY_GROUP=oinstall
+
+export ORA_BASE ORA_HOME ORA_OWNER ORA_PRIMARY_GROUP
+
+# +------------------------------------------------------------------------+
+# | SCRIPT NAME VARIABLES                                                  |
+# +------------------------------------------------------------------------+
+VERSION="5.3"
+SCRIPT_NAME_FULL=$0
+SCRIPT_NAME=${SCRIPT_NAME_FULL##*/}
+SCRIPT_NAME=${SCRIPT_NAME##K10}
+SCRIPT_NAME=${SCRIPT_NAME##S99}
+SCRIPT_NAME_NOEXT=${SCRIPT_NAME%%\.ksh}
+
+export VERSION SCRIPT_NAME_FULL SCRIPT_NAME SCRIPT_NAME_NOEXT
+
+# +------------------------------------------------------------------------+
+# | DATE VARIABLES                                                         |
+# +------------------------------------------------------------------------+
+START_DATE_TIME=`date "+%m/%d/%Y %H:%M:%S"`
+
+export START_DATE_TIME
+
+# +------------------------------------------------------------------------+
+# | CUSTOM DIRECTORIES                                                     |
+# +------------------------------------------------------------------------+
+CUSTOM_ORACLE_DIR=${ORACLE_BASE}/dba_scripts
+CUSTOM_ORACLE_BIN_DIR=${CUSTOM_ORACLE_DIR}/bin
+CUSTOM_ORACLE_LIB_DIR=${CUSTOM_ORACLE_DIR}/lib
+CUSTOM_ORACLE_LOG_DIR=${CUSTOM_ORACLE_DIR}/log
+CUSTOM_ORACLE_OUT_DIR=${CUSTOM_ORACLE_DIR}/out
+CUSTOM_ORACLE_SQL_DIR=${CUSTOM_ORACLE_DIR}/sql
+CUSTOM_ORACLE_TEMP_DIR=${CUSTOM_ORACLE_DIR}/temp
+
+export CUSTOM_ORACLE_DIR CUSTOM_ORACLE_BIN_DIR CUSTOM_ORACLE_LIB_DIR CUSTOM_ORACLE_LOG_DIR
+export CUSTOM_ORACLE_OUT_DIR CUSTOM_ORACLE_SQL_DIR CUSTOM_ORACLE_TEMP_DIR
+
+# +------------------------------------------------------------------------+
+# | LOG FILE VARIABLES                                                     |
+# +------------------------------------------------------------------------+
+LOG_FILE_NAME=${CUSTOM_ORACLE_LOG_DIR}/${SCRIPT_NAME_NOEXT}.log
+
+export LOG_FILE_NAME
+
+# +------------------------------------------------------------------------+
+# | HOSTNAME VARIABLES                                                     |
+# +------------------------------------------------------------------------+
+HOSTNAME=`hostname`
+HOSTNAME_UPPER=`hostname | tr '[:lower:]' '[:upper:]'`
+HOSTNAME_SHORT=${HOSTNAME%%\.*}
+HOSTNAME_SHORT_UPPER=`echo $HOSTNAME_SHORT | tr '[:lower:]' '[:upper:]'`
+
+export HOSTNAME HOSTNAME_UPPER HOSTNAME_SHORT HOSTNAME_SHORT_UPPER
+
+# +------------------------------------------------------------------------+
+# | MAIL VARIABLES                                                         |
+# +------------------------------------------------------------------------+
+EMAIL_SUBJECT_TITLE="DB-INIT Process"
+
+export EMAIL_SUBJECT_TITLE
+
+
+# +------------------------------------------------------------------------+
+# | PRINT HEADER INFORMATION                                               |
+# +------------------------------------------------------------------------+
+echo " "
+echo "+--------------------------------------------------------------------+"
+echo "| Starting Oracle Database Script.                                   |"
+echo "| 0 : $0                                          |"
+echo "| 1 : $1                                                          |"
+echo "+--------------------------------------------------------------------+"
+echo " "
+
+
+# +----------------------------------------------+
+# | VERIFY THAT ALL NEEDED SCRIPTS ARE AVAILABLE |
+# | BEFORE CONTINUING.                           |
+# +----------------------------------------------+
+if [ ! -f $ORA_HOME/bin/dbstart -o ! -d $ORA_HOME ]; then
+    echo " "
+    echo "+-------------------------------------+"
+    echo "| ERROR:                              |"
+    echo "| Oracle startup: cannot start        |"
+    echo "|                 cannot find dbstart |"
+    echo "+-------------------------------------+"
+    echo " "
+    exit
+fi
+
+
+
+# +---------------------------+
+# | START/STOP CASE STATEMENT |
+# +---------------------------+
+case "$1" in
+
+start)
+
+        echo " "
+        echo "+----------------------------------------+"
+        echo "| ************************************** |"
+        echo "| >>>>>>>>>   START PROCESS   <<<<<<<<<< |"
+        echo "| ************************************** |"
+        echo "+----------------------------------------+"
+        echo " "
+
+
+        echo "Subject: [$HOSTNAME_SHORT_UPPER] - ${EMAIL_SUBJECT_TITLE} - (START at $START_DATE_TIME)" | /usr/lib/sendmail -v dba@idevelopment.info
+
+
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "+-------------------------------------------------------------+" | tee -a ${LOG_FILE_NAME}
+        echo "|                +-------------------------+                  |" | tee -a ${LOG_FILE_NAME}
+        echo "|                |---   START PROCESS   ---|                  |" | tee -a ${LOG_FILE_NAME}
+        echo "|                +-------------------------+                  |" | tee -a ${LOG_FILE_NAME}
+        echo "|                                                             |" | tee -a ${LOG_FILE_NAME}
+        echo "|                         [ BEGIN ]                           |" | tee -a ${LOG_FILE_NAME}
+        echo "|                                                             |" | tee -a ${LOG_FILE_NAME}
+        echo "| START_TIME: ${START_DATE_TIME}                             |"  | tee -a ${LOG_FILE_NAME}
+        echo "+-------------------------------------------------------------+" | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo "SCRIPT VARIABLES"                                                | tee -a ${LOG_FILE_NAME}
+        echo "---------------------------------------------------------------" | tee -a ${LOG_FILE_NAME}
+        echo "SCRIPT_NAME_FULL       : ${SCRIPT_NAME_FULL}"                    | tee -a ${LOG_FILE_NAME}
+        echo "SCRIPT_NAME            : ${SCRIPT_NAME}"                         | tee -a ${LOG_FILE_NAME}
+        echo "SCRIPT_NAME_NOEXT      : ${SCRIPT_NAME_NOEXT}"                   | tee -a ${LOG_FILE_NAME}
+        echo "VERSION                : ${VERSION}"                             | tee -a ${LOG_FILE_NAME}
+        echo "LOG_FILE_NAME          : ${LOG_FILE_NAME}"                       | tee -a ${LOG_FILE_NAME}
+        echo "START_TIME             : ${START_DATE_TIME}"                     | tee -a ${LOG_FILE_NAME}
+        echo "HOSTNAME               : ${HOSTNAME}"                            | tee -a ${LOG_FILE_NAME}
+        echo "ORA_BASE               : ${ORA_BASE}"                            | tee -a ${LOG_FILE_NAME}
+        echo "ORA_HOME               : ${ORA_HOME}"                            | tee -a ${LOG_FILE_NAME}
+        echo "ORA_OWNER              : ${ORA_OWNER}"                           | tee -a ${LOG_FILE_NAME}
+        echo "ORA_PRIMARY_GROUP      : ${ORA_PRIMARY_GROUP}"                   | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo "ACTIONS"                                                         | tee -a ${LOG_FILE_NAME}
+        echo "---------------------------------------------------------------" | tee -a ${LOG_FILE_NAME}
+
+        chown ${ORA_OWNER}:${ORA_PRIMARY_GROUP} ${LOG_FILE_NAME}
+
+        echo " "
+        echo "+---------------------------------------------------+"
+        echo "| About to start the Oracle databases.              |"
+        echo "+---------------------------------------------------+"
+        echo " "
+        
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "[START] : $TOUCH_DATE : Starting all Oracle databases - [${HOSTNAME_SHORT_UPPER}]." | tee -a ${LOG_FILE_NAME}
+        
+        su - $ORA_OWNER -c "$ORA_HOME/bin/dbstart ${ORA_HOME}" | tee -a ${LOG_FILE_NAME}
+        
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "[START] : $TOUCH_DATE : Started all Oracle databases - [${HOSTNAME_SHORT_UPPER}]." | tee -a ${LOG_FILE_NAME}
+
+
+        echo " "
+        echo "+---------------------------------------------------+"
+        echo "| About to start the Oracle Intelligent Agent.      |"
+        echo "+---------------------------------------------------+"
+        echo " "
+        
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "[START] : $TOUCH_DATE : Starting Oracle Intelligent Agent." | tee -a ${LOG_FILE_NAME}
+                
+        su - $ORA_OWNER -c "${CUSTOM_ORACLE_BIN_DIR}/oem10g_ctl.ksh start agent" | tee -a ${LOG_FILE_NAME}
+                
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "[START] : $TOUCH_DATE : Started Oracle Intelligent Agent." | tee -a ${LOG_FILE_NAME}
+
+
+        END_DATE_TIME=`date "+%m/%d/%Y %H:%M:%S"`
+        echo " " | tee -a ${LOG_FILE_NAME}
+        echo "+-------------------------------------------------------------+" | tee -a ${LOG_FILE_NAME}
+        echo "|                +-------------------------+                  |" | tee -a ${LOG_FILE_NAME}
+        echo "|                |---   START PROCESS   ---|                  |" | tee -a ${LOG_FILE_NAME}
+        echo "|                +-------------------------+                  |" | tee -a ${LOG_FILE_NAME}
+        echo "|                                                             |" | tee -a ${LOG_FILE_NAME}
+        echo "|                         [ END ]                             |" | tee -a ${LOG_FILE_NAME}
+        echo "|                                                             |" | tee -a ${LOG_FILE_NAME}
+        echo "| END_TIME: ${END_DATE_TIME}                               |"    | tee -a ${LOG_FILE_NAME}
+        echo "+-------------------------------------------------------------+" | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo "#####################################################################################" | tee -a ${LOG_FILE_NAME}
+        echo "#####################################################################################" | tee -a ${LOG_FILE_NAME}
+        echo "#####################################################################################" | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+
+        ;;
+
+stop)
+
+        echo " "
+        echo "+----------------------------------------+"
+        echo "| ************************************** |"
+        echo "| >>>>>>>>>>   STOP PROCESS   <<<<<<<<<< |"
+        echo "| ************************************** |"
+        echo "+----------------------------------------+"
+        echo " "
+
+
+        echo "Subject: [$HOSTNAME_SHORT_UPPER] - ${EMAIL_SUBJECT_TITLE} - (STOP at $START_DATE_TIME)" | /usr/lib/sendmail -v dba@idevelopment.info
+
+
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "+-------------------------------------------------------------+" | tee -a ${LOG_FILE_NAME}
+        echo "|                +------------------------+                   |" | tee -a ${LOG_FILE_NAME}
+        echo "|                |---   STOP PROCESS   ---|                   |" | tee -a ${LOG_FILE_NAME}
+        echo "|                +------------------------+                   |" | tee -a ${LOG_FILE_NAME}
+        echo "|                                                             |" | tee -a ${LOG_FILE_NAME}
+        echo "|                         [ BEGIN ]                           |" | tee -a ${LOG_FILE_NAME}
+        echo "|                                                             |" | tee -a ${LOG_FILE_NAME}
+        echo "| START_TIME: ${START_DATE_TIME}                             |"  | tee -a ${LOG_FILE_NAME}
+        echo "+-------------------------------------------------------------+" | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo "SCRIPT VARIABLES"                                                | tee -a ${LOG_FILE_NAME}
+        echo "---------------------------------------------------------------" | tee -a ${LOG_FILE_NAME}
+        echo "SCRIPT_NAME            : ${SCRIPT_NAME_FULL}"                    | tee -a ${LOG_FILE_NAME}
+        echo "SCRIPT_NAME            : ${SCRIPT_NAME}"                         | tee -a ${LOG_FILE_NAME}
+        echo "SCRIPT_NAME_NOEXT      : ${SCRIPT_NAME_NOEXT}"                   | tee -a ${LOG_FILE_NAME}
+        echo "VERSION                : ${VERSION}"                             | tee -a ${LOG_FILE_NAME}
+        echo "LOG_FILE_NAME          : ${LOG_FILE_NAME}"                       | tee -a ${LOG_FILE_NAME}
+        echo "START_TIME             : ${START_DATE_TIME}"                     | tee -a ${LOG_FILE_NAME}
+        echo "HOSTNAME               : ${HOSTNAME}"                            | tee -a ${LOG_FILE_NAME}
+        echo "ORA_BASE               : ${ORA_BASE}"                            | tee -a ${LOG_FILE_NAME}
+        echo "ORA_HOME               : ${ORA_HOME}"                            | tee -a ${LOG_FILE_NAME}
+        echo "ORA_OWNER              : ${ORA_OWNER}"                           | tee -a ${LOG_FILE_NAME}
+        echo "ORA_PRIMARY_GROUP      : ${ORA_PRIMARY_GROUP}"                   | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo "ACTIONS"                                                         | tee -a ${LOG_FILE_NAME}
+        echo "---------------------------------------------------------------" | tee -a ${LOG_FILE_NAME}
+
+        chown ${ORA_OWNER}:${ORA_PRIMARY_GROUP} ${LOG_FILE_NAME}
+
+        echo " "
+        echo "+---------------------------------------------------+"
+        echo "| About to stop the Oracle Intelligent Agent.       |"
+        echo "+---------------------------------------------------+"
+        echo " "
+        
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "[STOP] : $TOUCH_DATE : Stopping Oracle Intelligent Agent."     | tee -a ${LOG_FILE_NAME}
+                
+        su - $ORA_OWNER -c "${CUSTOM_ORACLE_BIN_DIR}/oem10g_ctl.ksh stop agent" | tee -a ${LOG_FILE_NAME}
+                
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "[STOP] : $TOUCH_DATE : Stopped Oracle Intelligent Agent." | tee -a ${LOG_FILE_NAME}
+
+
+
+        echo " "
+        echo "+---------------------------------------------------+"
+        echo "| About to stop the Oracle databases.               |"
+        echo "+---------------------------------------------------+"
+        echo " "
+        
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "[STOP] : $TOUCH_DATE : Stopping all Oracle databases - [${HOSTNAME_SHORT_UPPER}]." | tee -a ${LOG_FILE_NAME}
+        
+        su - $ORA_OWNER -c "$ORA_HOME/bin/dbshut ${ORA_HOME}" | tee -a ${LOG_FILE_NAME}
+        
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "[STOP] : $TOUCH_DATE : Stopped all Oracle databases - [${HOSTNAME_SHORT_UPPER}]." | tee -a ${LOG_FILE_NAME}
+
+
+
+        END_DATE_TIME=`date "+%m/%d/%Y %H:%M:%S"`
+        echo " " | tee -a ${LOG_FILE_NAME}
+        echo "+-------------------------------------------------------------+" | tee -a ${LOG_FILE_NAME}
+        echo "|                +------------------------+                   |" | tee -a ${LOG_FILE_NAME}
+        echo "|                |---   STOP PROCESS   ---|                   |" | tee -a ${LOG_FILE_NAME}
+        echo "|                +------------------------+                   |" | tee -a ${LOG_FILE_NAME}
+        echo "|                                                             |" | tee -a ${LOG_FILE_NAME}
+        echo "|                                                             |" | tee -a ${LOG_FILE_NAME}
+        echo "|                         [ END ]                             |" | tee -a ${LOG_FILE_NAME}
+        echo "|                                                             |" | tee -a ${LOG_FILE_NAME}
+        echo "| END_TIME: ${END_DATE_TIME}                               |"    | tee -a ${LOG_FILE_NAME}
+        echo "+-------------------------------------------------------------+" | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo "#####################################################################################" | tee -a ${LOG_FILE_NAME}
+        echo "#####################################################################################" | tee -a ${LOG_FILE_NAME}
+        echo "#####################################################################################" | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+
+        ;;
+
+*)
+
+        echo $"Usage: $SCRIPT_NAME_NOEXT {start|stop}"
+        exit 1
+
+esac
+
+
+echo " "
+echo "+----------------------+"
+echo "| ENDING ORACLE SCRIPT |"
+echo "+----------------------+"
+echo " "
+
+exit

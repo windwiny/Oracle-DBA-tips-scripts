@@ -1,0 +1,53 @@
+#!/bin/ksh
+
+# +----------------------------------------------------------------------------+
+# |                          Jeffrey M. Hunter                                 |
+# |                      jhunter@idevelopment.info                             |
+# |                         www.idevelopment.info                              |
+# |----------------------------------------------------------------------------|
+# |      Copyright (c) 1998-2015 Jeffrey M. Hunter. All rights reserved.       |
+# |----------------------------------------------------------------------------|
+# | DATABASE : Oracle                                                          |
+# | FILE     : rac_crs_stat                                                    |
+# | CLASS    : UNIX Shell Scripts                                              |
+# | PURPOSE  : This KSH script will query all CRS resources using the crs_stat |
+# |            script. The report will be a formatted version of the           |
+# |            crs_stat -t command, but in tabular form with resource name     |
+# |            and status. Filtering options are available by passing in a     |
+# |            single string parameter to this script. This argument will be   |
+# |            used to limit the output to HA resources whose names match      |
+# |            that string.                                                    |
+# | USAGE    : rac_crs_stat.ksh [RESOURCE_KEY]                                 |
+# | NOTE     : This script requires the environment $ORA_CRS_HOME to be set to |
+# |            your CRS installation.                                          |
+# | NOTE     : As with any code, ensure to test this script in a development   |
+# |            environment before attempting to run it in production.          |
+# +----------------------------------------------------------------------------+
+
+# +----------------------------------------------------------------------------+
+# | GLOBAL VARIABLES                                                           |
+# +----------------------------------------------------------------------------+
+
+RSC_KEY=$1
+QSTAT=-u
+AWK=/usr/bin/awk
+
+# +----------------------------------------------------------------------------+
+# | TABLE HEADER                                                               |
+# +----------------------------------------------------------------------------+
+
+$AWK \
+  'BEGIN {printf "%-50s %-10s %-18s\n", "HA Resource", "Target", "State";
+          printf "%-50s %-10s %-18s\n", "-----------", "------", "-----";}'
+
+# +----------------------------------------------------------------------------+
+# | TABLE BODY                                                                 |
+# +----------------------------------------------------------------------------+
+
+$ORA_CRS_HOME/bin/crs_stat $QSTAT | $AWK \
+ 'BEGIN { FS="="; state = 0; }
+  $1~/NAME/ && $2~/'$RSC_KEY'/ {appname = $2; state=1};
+  state == 0 {next;}
+  $1~/TARGET/ && state == 1 {apptarget = $2; state=2;}
+  $1~/STATE/ && state == 2 {appstate = $2; state=3;}
+  state == 3 {printf "%-50s %-10s %-18s\n", appname, apptarget, appstate; state=0;}'

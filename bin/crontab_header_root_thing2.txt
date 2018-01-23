@@ -1,0 +1,16 @@
+# +-----------------------------------------------------------------------+
+# | RECORD FORMAT                                                         |
+# | -------------                                                         |
+# | minute(0-59) hour(0-23) day(1-31) month(1-12) weekday(0-6  0=Sunday)  |
+# +-----------------------------------------------------------------------+
+#
+# +---------------------------------------------------------+------------------------+
+# | Take nightly backup of OCR File and Voting Disk         | Daily at 3:20 a.m.     |
+# +---------------------------------------------------------+------------------------+
+20 03 * * * /u01/app/oracle/dba_scripts/bin/crs_components_backup_10g.ksh crs NOVOTEDISK OCRFILE > /u01/app/oracle/dba_scripts/log/crs_components_backup_10g_crs_THING2.job 2>&1
+#
+# +---------------------------------------------------------+------------------------+
+# | Check OCFS2 Orphaned Files                              | Daily at 8:20 p.m.     |
+# +---------------------------------------------------------+------------------------+
+20 20 * * * /u01/app/oracle/dba_scripts/bin/ocfs2_check_orphaned_files.ksh /dev/iscsi/thingdbocfs2vol1/part1 0001 5 > /u01/app/oracle/dba_scripts/log/ocfs2_check_orphaned_files_thingdbocfs2vol1_part1_0001_THING2.job 2>&1
+#

@@ -1,0 +1,83 @@
+:
+
+# +----------------------------------------------------------------------------+
+# |                          Jeffrey M. Hunter                                 |
+# |                      jhunter@idevelopment.info                             |
+# |                         www.idevelopment.info                              |
+# +----------------------------------------------------------------------------|
+# |      Copyright (c) 1998-2015 Jeffrey M. Hunter. All rights reserved.       |
+# +----------------------------------------------------------------------------|
+# | DATABASE : Oracle                                                          |
+# | FILE     : asm                                                             |
+# | CLASS    : UNIX Shell Scripts                                              |
+# | PURPOSE  : Display metadata about ASM disk groups.                         |
+# | NOTE     : As with any code, ensure to test this script in a development   |
+# |            environment before attempting to run it in production.          |
+# +----------------------------------------------------------------------------+
+
+# ----------------------------
+# SCRIPT NAME VARIABLES
+# ----------------------------
+VERSION="3.9"
+SCRIPT_NAME_FULL=$0
+SCRIPT_NAME=${SCRIPT_NAME_FULL##*/}
+CURRENT_YEAR=`${DATE_BIN} +"%Y"`;
+
+echo " "
+echo "$SCRIPT_NAME - Version $VERSION"
+echo "Copyright (c) 1998-${CURRENT_YEAR} Jeffrey M. Hunter. All rights reserved."
+echo " "
+
+# +----------------------------------------------------------------------------+
+# | NOTE: THIS SCRIPT ATTEMPTS TO DETERMINE AND SET THE ORACLE_SID FOR THE     |
+# |       ASM INSTANCE. IF IT FAILS, SET THE FOLLOWING ORACLE_SID ENVIRONMENT  |
+# |       VARIABLE TO THAT OF YOUR ASM INSTANCE.                               |
+# +----------------------------------------------------------------------------+
+
+ORACLE_SID=`ps -ef | grep asm_smon | grep -v 'grep' | grep -v 'sed' | awk '{printf $8}' | awk 'BEGIN{FS="_"} {printf $3}'`
+# ORACLE_SID=+ASM
+export ORACLE_SID
+
+echo -------------------------------
+echo USING SID: $ORACLE_SID
+echo -------------------------------
+
+sqlplus -s "/ as sysdba" <<EOF
+SET LINESIZE  145
+SET PAGESIZE  9999
+SET VERIFY    off
+
+COLUMN group_name             FORMAT a20           HEAD 'Disk Group|Name'
+COLUMN sector_size            FORMAT 99,999        HEAD 'Sector|Size'
+COLUMN block_size             FORMAT 99,999        HEAD 'Block|Size'
+COLUMN allocation_unit_size   FORMAT 999,999,999   HEAD 'Allocation|Unit Size'
+COLUMN state                  FORMAT a11           HEAD 'State'
+COLUMN type                   FORMAT a6            HEAD 'Type'
+COLUMN total_mb               FORMAT 999,999,999   HEAD 'Total Size (MB)'
+COLUMN used_mb                FORMAT 999,999,999   HEAD 'Used Size (MB)'
+COLUMN pct_used               FORMAT 999.99        HEAD 'Pct. Used'
+
+break on report on disk_group_name skip 1
+
+compute sum label "Grand Total: " of total_mb used_mb on report
+
+SELECT
+    name                                     group_name
+  , sector_size                              sector_size
+  , block_size                               block_size
+  , allocation_unit_size                     allocation_unit_size
+  , state                                    state
+  , type                                     type
+  , total_mb                                 total_mb
+  , (total_mb - free_mb)                     used_mb
+  , ROUND((1- (free_mb / total_mb))*100, 2)  pct_used
+FROM
+    v\$asm_diskgroup
+WHERE
+    state = 'MOUNTED'
+ORDER BY
+    name
+/
+EOF
+
+exit

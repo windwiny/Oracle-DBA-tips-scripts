@@ -1,0 +1,57 @@
+# +----------------------------------------------------------------------------+
+# |                          Jeffrey M. Hunter                                 |
+# |                      jhunter@idevelopment.info                             |
+# |                         www.idevelopment.info                              |
+# |----------------------------------------------------------------------------|
+# |      Copyright (c) 1998-2015 Jeffrey M. Hunter. All rights reserved.       |
+# |----------------------------------------------------------------------------|
+# | DATABASE : Oracle                                                          |
+# | FILE     : rman_configuration_clear_all_9i.rcv                             |
+# | CLASS    : Recovery Manager                                                |
+# | PURPOSE  : Provides an RMAN script used to clear all persistent RMAN       |
+# |            configuration parameters to their default value.                |
+# | NOTE     : As with any code, ensure to test this script in a development   |
+# |            environment before attempting to run it in production.          |
+# +----------------------------------------------------------------------------+
+
+# +----------------------------------------------------------------------------+
+# |                  <<<    RMAN DEFAULT SETTING    >>>                        |
+# |----------------------------------------------------------------------------+--------------------------+
+# | CONFIGURE RETENTION POLICY TO REDUNDANCY 1; # default                                                 |
+# | CONFIGURE BACKUP OPTIMIZATION OFF; # default                                                          |
+# | CONFIGURE DEFAULT DEVICE TYPE TO DISK; # default                                                      |
+# | CONFIGURE CONTROLFILE AUTOBACKUP OFF; # default                                                       |
+# | CONFIGURE CONTROLFILE AUTOBACKUP FORMAT FOR DEVICE TYPE DISK TO '%F'; # default                       |
+# | CONFIGURE DEVICE TYPE DISK PARALLELISM 1; # default                                                   |
+# | CONFIGURE DATAFILE BACKUP COPIES FOR DEVICE TYPE DISK TO 1; # default                                 |
+# | CONFIGURE ARCHIVELOG BACKUP COPIES FOR DEVICE TYPE DISK TO 1; # default                               |
+# | CONFIGURE MAXSETSIZE TO UNLIMITED; # default                                                          |
+# | CONFIGURE SNAPSHOT CONTROLFILE NAME TO '/u01/app/oracle/product/9.2.0/dbs/snapcf_ORA920.f'; # default |
+# +-------------------------------------------------------------------------------------------------------+
+
+CONFIGURE RETENTION POLICY CLEAR;
+
+CONFIGURE BACKUP OPTIMIZATION CLEAR;
+
+CONFIGURE DEFAULT DEVICE TYPE CLEAR;
+
+CONFIGURE CONTROLFILE AUTOBACKUP CLEAR;
+CONFIGURE CONTROLFILE AUTOBACKUP FORMAT FOR DEVICE TYPE DISK CLEAR;
+CONFIGURE CONTROLFILE AUTOBACKUP FORMAT FOR DEVICE TYPE SBT CLEAR;
+
+CONFIGURE DEVICE TYPE DISK CLEAR;
+
+CONFIGURE DATAFILE BACKUP COPIES FOR DEVICE TYPE DISK CLEAR;
+CONFIGURE DATAFILE BACKUP COPIES FOR DEVICE TYPE SBT  CLEAR;
+CONFIGURE ARCHIVELOG BACKUP COPIES FOR DEVICE TYPE DISK CLEAR;
+CONFIGURE ARCHIVELOG BACKUP COPIES FOR DEVICE TYPE SBT CLEAR;
+
+CONFIGURE CHANNEL DEVICE TYPE DISK CLEAR;
+CONFIGURE CHANNEL DEVICE TYPE SBT CLEAR;
+
+CONFIGURE MAXSETSIZE CLEAR;
+
+CONFIGURE SNAPSHOT CONTROLFILE NAME CLEAR;
+
+# CONFIGURE EXCLUDE FOR TABLESPACE USERS_READ_TBS;
+

@@ -1,0 +1,49 @@
+:
+
+# +----------------------------------------------------------------------------+
+# |                          Jeffrey M. Hunter                                 |
+# |                      jhunter@idevelopment.info                             |
+# |                         www.idevelopment.info                              |
+# |----------------------------------------------------------------------------|
+# |      Copyright (c) 1998-2015 Jeffrey M. Hunter. All rights reserved.       |
+# |----------------------------------------------------------------------------|
+# | DATABASE : Oracle                                                          |
+# | FILE     : get_public_ip_address                                           |
+# | CLASS    : UNIX Shell Scripts                                              |
+# | NOTE     : As with any code, ensure to test this script in a development   |
+# |            environment before attempting to run it in production.          |
+# +----------------------------------------------------------------------------+
+
+SendMailBinary="/usr/lib/sendmail";        # Linux
+# SendMailBinary="/usr/sbin/sendmail";     # FreeBSD
+
+MAILHEADERFILE=TempMailHeader.txt
+MAILBODYFILE=TempMailBody.txt
+
+cd /tmp
+
+# [ - OLD METHOD - ]
+# wget http://www.whatismyip.com
+# mail_message=`grep 'Your IP Address Is' index.html`
+# mail_message=`echo $mail_message | sed 's/<h1>//g'`
+# mail_message=`echo $mail_message | sed 's/<\/h1>//g'`
+# mail_message=`echo $mail_message | sed 's/<br>//g'`
+
+
+# [ - SUGGESTED METHOD - ]
+wget http://www.whatismyip.com/automation/n09230945.asp
+mail_message=`cat n09230945.asp`
+
+s_mail_message=`echo $mail_message | sed 's/Your IP Address Is //g'`
+
+echo "Subject: Public WAN IP Address - $s_mail_message" > $MAILHEADERFILE
+
+echo $mail_message > $MAILBODYFILE;
+
+cat $MAILHEADERFILE $MAILBODYFILE | $SendMailBinary -v -fjhunter@alex.com jhunter@idevelopment.info
+
+rm -f index.html
+rm -f n09230945.asp
+rm -f n09230945.asp.*
+rm -f $MAILHEADERFILE
+rm -f $MAILBODYFILE

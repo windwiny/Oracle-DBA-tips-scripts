@@ -1,0 +1,466 @@
+#!/bin/bash
+# chkconfig: 345 99 10
+# description: Oracle RAC auto start-stop script.
+#
+# +------------------------------------------------------------------------+
+# | FILE         : dbora_rac_10g                                           |
+# | ORGANIZATION : iDevelopment.info                                       |
+# | DATE         : 17-APR-2010                                             |
+# | DESCRIPTION  : This script is responsible for starting and stopping    |
+# |                all Oracle components and services on this host. This   |
+# |                version is specific to Oracle RAC 10g.                  |
+# | NOTE         : This script is simply a wrapper script and does not     |
+# |                actually start any Oracle RAC services. All Oracle RAC  |
+# |                components are started through init and Oracle          |
+# |                Clusterware. This script does send email and starts the |
+# |                Oracle OEM agent. To start the OEM agent, this script   |
+# |                relies on the custom script                             |
+# |                /u01/app/oracle/dba_scripts/bin/oem10g_ctl.ksh          |
+# | INSTALLATION :                                                         |
+# |                - At the beginning  of this script, set all RAC_*       |
+# |                  environment variables as well as ORACLE_HOME and      |
+# |                  ORA_CRS_HOME.                                         |
+# |                                                                        |
+# |                - On Linux and Solaris, this script should be copied    |
+# |                  to the /etc/init.d directory.                         |
+# |                                                                        |
+# |                - Verify this script is executable and owned by root:   |
+# |                                                                        |
+# |                      chown root:root /etc/init.d/dbora_rac_10g         |
+# |                      chmod 755 /etc/init.d/dbora_rac_10g               |
+# |                                                                        |
+# |                - Associate the dbora_10g service with the appropriate  |
+# |                  run levels and set it to auto-start using the         |
+# |                  following command:                                    |
+# |                                                                        |
+# |                      chkconfig --level 345 dbora_rac_10g on            |
+# |                                                                        |
+# |                  To force the dbora_10g service (this script) to be    |
+# |                  ignored:                                              |
+# |                                                                        |
+# |                      chkconfig --level 345 dbora_rac_10g off           |
+# |                                                                        |
+# +------------------------------------------------------------------------+
+
+# +------------------------------------------------------------------------+
+# | FORCE THIS SCRIPT TO BE IGNORED                                        |
+# +------------------------------------------------------------------------+
+# exit
+
+# +------------------------------------------------------------------------+
+# |                                                                        |
+# |                       DEFINE ALL GLOBAL VARIABLES                      |
+# |                                                                        |
+# +------------------------------------------------------------------------+
+
+# +------------------------------------------------------------------------+
+# | ORACLE CLUSTER PARAMETERS                                              |
+# | -------------------------                                              |
+# | Modify the following Oracle service parameters to reflect the RAC      |
+# | configuration this script will be responsible for managing.            |
+# +------------------------------------------------------------------------+
+RAC_ORACLE_DATABASE="racdb"
+RAC_ORACLE_INSTANCE="racdb1"
+RAC_NODE_NAME=`hostname`
+
+export RAC_ORACLE_DATABASE RAC_ORACLE_INSTANCE RAC_NODE_NAME
+
+# +------------------------------------------------------------------------+
+# | ALTER THE FOLLOWING TO REFLECT THIS SERVER ORACLE SETUP                |
+# | ---------------------------------------------------------------------- |
+# | Set the ORACLE_HOME and ORA_CRS_HOME to the appropriate directory path.|
+# +------------------------------------------------------------------------+
+ORACLE_BASE=/u01/app/oracle
+ORACLE_HOME=$ORACLE_BASE/product/10.2.0/db_1
+ORA_CRS_HOME=/u01/app/crs
+
+export ORACLE_BASE ORACLE_HOME ORA_CRS_HOME
+
+# +------------------------------------------------------------------------+
+# | SCRIPT NAME VARIABLES                                                  |
+# +------------------------------------------------------------------------+
+VERSION="5.2"
+SCRIPT_NAME_FULL=$0
+SCRIPT_NAME=${SCRIPT_NAME_FULL##*/}
+SCRIPT_NAME=${SCRIPT_NAME##K10}
+SCRIPT_NAME=${SCRIPT_NAME##S99}
+SCRIPT_NAME_NOEXT=${SCRIPT_NAME%%\.ksh}
+
+export VERSION SCRIPT_NAME_FULL SCRIPT_NAME SCRIPT_NAME_NOEXT
+
+# +------------------------------------------------------------------------+
+# | DATE VARIABLES                                                         |
+# +------------------------------------------------------------------------+
+START_DATE_TIME=`date "+%m/%d/%Y %H:%M:%S"`
+
+export START_DATE_TIME
+
+# +------------------------------------------------------------------------+
+# | CUSTOM DIRECTORIES                                                     |
+# +------------------------------------------------------------------------+
+CUSTOM_ORACLE_DIR=${ORACLE_BASE}/dba_scripts
+CUSTOM_ORACLE_BIN_DIR=${CUSTOM_ORACLE_DIR}/bin
+CUSTOM_ORACLE_LIB_DIR=${CUSTOM_ORACLE_DIR}/lib
+CUSTOM_ORACLE_LOG_DIR=${CUSTOM_ORACLE_DIR}/log
+CUSTOM_ORACLE_OUT_DIR=${CUSTOM_ORACLE_DIR}/out
+CUSTOM_ORACLE_SQL_DIR=${CUSTOM_ORACLE_DIR}/sql
+CUSTOM_ORACLE_TEMP_DIR=${CUSTOM_ORACLE_DIR}/temp
+
+export CUSTOM_ORACLE_DIR CUSTOM_ORACLE_BIN_DIR CUSTOM_ORACLE_LIB_DIR CUSTOM_ORACLE_LOG_DIR
+export CUSTOM_ORACLE_OUT_DIR CUSTOM_ORACLE_SQL_DIR CUSTOM_ORACLE_TEMP_DIR
+
+# +------------------------------------------------------------------------+
+# | LOG FILE VARIABLES                                                     |
+# +------------------------------------------------------------------------+
+LOG_FILE_NAME=${CUSTOM_ORACLE_LOG_DIR}/${SCRIPT_NAME_NOEXT}.log
+
+export LOG_FILE_NAME
+
+# +------------------------------------------------------------------------+
+# | HOSTNAME VARIABLES                                                     |
+# +------------------------------------------------------------------------+
+HOSTNAME=`hostname`
+HOSTNAME_UPPER=`hostname | tr '[:lower:]' '[:upper:]'`
+HOSTNAME_SHORT=${HOSTNAME%%\.*}                                                
+HOSTNAME_SHORT_UPPER=`echo $HOSTNAME_SHORT | tr '[:lower:]' '[:upper:]'` 
+
+export HOSTNAME HOSTNAME_UPPER HOSTNAME_SHORT HOSTNAME_SHORT_UPPER
+
+# +------------------------------------------------------------------------+
+# | MISC PARAMETERS / ENVIRONMENT VARIABLES                                |
+# +------------------------------------------------------------------------+
+ORACLE_OWNER=oracle
+EMAIL_SUBJECT_TITLE="DB-INIT Process"
+
+export ORACLE_OWNER EMAIL_SUBJECT_TITLE
+
+
+# +------------------------------------------------------------------------+
+# | PRINT HEADER INFORMATION                                               |
+# +------------------------------------------------------------------------+
+echo " "
+echo "+--------------------------------------------------------------------+"
+echo "| Starting Oracle Database Script.                                   |"
+echo "| 0 : $0                                          |"
+echo "| 1 : $1                                                          |"
+echo "+--------------------------------------------------------------------+"
+echo " "
+
+
+# +----------------------------------------------+
+# | VERIFY THAT ALL NEEDED SCRIPTS ARE AVAILABLE |
+# | BEFORE CONTINUING.                           |
+# +----------------------------------------------+
+if [ ! -f $ORACLE_HOME/bin/dbstart -o ! -d $ORACLE_HOME ]; then
+    echo " "
+    echo "+-------------------------------------+"
+    echo "| ERROR:                              |"
+    echo "| Oracle startup: cannot start        |"
+    echo "|                 cannot find dbstart |"
+    echo "+-------------------------------------+"
+    echo " "
+    exit
+fi
+
+
+
+# +---------------------------+
+# | START/STOP CASE STATEMENT |
+# +---------------------------+
+case "$1" in
+
+start)
+
+        echo " "
+        echo "+----------------------------------------+"
+        echo "| ************************************** |"
+        echo "| >>>>>>>>>   START PROCESS   <<<<<<<<<< |"
+        echo "| ************************************** |"
+        echo "+----------------------------------------+"
+        echo " "
+        
+        
+        echo "Subject: [$HOSTNAME_SHORT_UPPER] - ${EMAIL_SUBJECT_TITLE} - (START at $START_DATE_TIME)" | /usr/lib/sendmail -v dba@idevelopment.info
+        
+        
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "+-------------------------------------------------------------+" | tee -a ${LOG_FILE_NAME}
+        echo "|                +-------------------------+                  |" | tee -a ${LOG_FILE_NAME}
+        echo "|                |---   START PROCESS   ---|                  |" | tee -a ${LOG_FILE_NAME}
+        echo "|                +-------------------------+                  |" | tee -a ${LOG_FILE_NAME}
+        echo "|                                                             |" | tee -a ${LOG_FILE_NAME}
+        echo "|                         [ BEGIN ]                           |" | tee -a ${LOG_FILE_NAME}
+        echo "|                                                             |" | tee -a ${LOG_FILE_NAME}
+        echo "| START_TIME: ${START_DATE_TIME}                             |"  | tee -a ${LOG_FILE_NAME}
+        echo "+-------------------------------------------------------------+" | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo "SCRIPT VARIABLES"                                                | tee -a ${LOG_FILE_NAME}
+        echo "---------------------------------------------------------------" | tee -a ${LOG_FILE_NAME}
+        echo "SCRIPT_NAME_FULL       : ${SCRIPT_NAME_FULL}"                    | tee -a ${LOG_FILE_NAME}
+        echo "SCRIPT_NAME            : ${SCRIPT_NAME}"                         | tee -a ${LOG_FILE_NAME}
+        echo "SCRIPT_NAME_NOEXT      : ${SCRIPT_NAME_NOEXT}"                   | tee -a ${LOG_FILE_NAME}
+        echo "VERSION                : ${VERSION}"                             | tee -a ${LOG_FILE_NAME}
+        echo "LOG_FILE_NAME          : ${LOG_FILE_NAME}"                       | tee -a ${LOG_FILE_NAME}
+        echo "START_TIME             : ${START_DATE_TIME}"                     | tee -a ${LOG_FILE_NAME}
+        echo "HOSTNAME               : ${HOSTNAME}"                            | tee -a ${LOG_FILE_NAME}
+        echo "ORACLE_BASE            : ${ORACLE_BASE}"                         | tee -a ${LOG_FILE_NAME}
+        echo "ORACLE_HOME            : ${ORACLE_HOME}"                         | tee -a ${LOG_FILE_NAME}
+        echo "ORA_CRS_HOME           : ${ORA_CRS_HOME}"                        | tee -a ${LOG_FILE_NAME}
+        echo "ORACLE_OWNER           : ${ORACLE_OWNER}"                        | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo "ORACLE RAC COMPONENT NAMES"                                      | tee -a ${LOG_FILE_NAME}
+        echo "---------------------------------------------------------------" | tee -a ${LOG_FILE_NAME}
+        echo "RAC_ORACLE_DATABASE    : ${RAC_ORACLE_DATABASE}"                 | tee -a ${LOG_FILE_NAME}
+        echo "RAC_ORACLE_INSTANCE    : ${RAC_ORACLE_INSTANCE}"                 | tee -a ${LOG_FILE_NAME}
+        echo "RAC_NODE_NAME          : ${RAC_NODE_NAME}"                       | tee -a ${LOG_FILE_NAME}
+        echo "                                          "                      | tee -a ${LOG_FILE_NAME}
+        echo "ACTIONS"                                                         | tee -a ${LOG_FILE_NAME}
+        echo "---------------------------------------------------------------" | tee -a ${LOG_FILE_NAME}
+        
+        chown oracle:oinstall ${LOG_FILE_NAME}
+
+        echo " "
+        echo "+-------------------------------------------------------+"
+        echo "| About to start Oracle Clusterware.                    |"
+        echo "+-------------------------------------------------------+"
+        echo " "
+
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "[START] : $TOUCH_DATE : The Oracle Clusterware is started through the init process - (no action required)." | tee -a ${LOG_FILE_NAME}
+
+
+        echo " "
+        echo "+---------------------------------------------------+"
+        echo "| About to start the nodeapps component.            |"
+        echo "+---------------------------------------------------+"
+        echo " "
+
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "[START] : $TOUCH_DATE : The nodeapps component is started through Oracle Clusterware - (no action required)." | tee -a ${LOG_FILE_NAME}
+
+
+        echo " "
+        echo "+---------------------------------------------------+"
+        echo "| About to start the ASM component.                 |"
+        echo "+---------------------------------------------------+"
+        echo " "
+
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "[START] : $TOUCH_DATE : The ASM component is started through Oracle Clusterware - (no action required)." | tee -a ${LOG_FILE_NAME}
+
+
+        echo " "
+        echo "+---------------------------------------------------+"
+        echo "| About to start Oracle instance.                   |"
+        echo "+---------------------------------------------------+"
+        echo " "
+        
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "[START] : $TOUCH_DATE : All Oracle instances are started through Oracle Clusterware - (no action required)." | tee -a ${LOG_FILE_NAME}
+
+
+        echo " "
+        echo "+---------------------------------------------------+"
+        echo "| About to start the Oracle Intelligent Agent.      |"
+        echo "+---------------------------------------------------+"
+        echo " "
+        
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "[START] : $TOUCH_DATE : Starting Oracle Intelligent Agent." | tee -a ${LOG_FILE_NAME}
+                
+        su - $ORACLE_OWNER -c "${CUSTOM_ORACLE_BIN_DIR}/oem10g_ctl.ksh start agent" | tee -a ${LOG_FILE_NAME}
+                
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "[START] : $TOUCH_DATE : Started Oracle Intelligent Agent." | tee -a ${LOG_FILE_NAME}
+
+
+        END_DATE_TIME=`date "+%m/%d/%Y %H:%M:%S"`
+        echo " " | tee -a ${LOG_FILE_NAME}
+        echo "+-------------------------------------------------------------+" | tee -a ${LOG_FILE_NAME}
+        echo "|                +-------------------------+                  |" | tee -a ${LOG_FILE_NAME}
+        echo "|                |---   START PROCESS   ---|                  |" | tee -a ${LOG_FILE_NAME}
+        echo "|                +-------------------------+                  |" | tee -a ${LOG_FILE_NAME}
+        echo "|                                                             |" | tee -a ${LOG_FILE_NAME}
+        echo "|                         [ END ]                             |" | tee -a ${LOG_FILE_NAME}
+        echo "|                                                             |" | tee -a ${LOG_FILE_NAME}
+        echo "| END_TIME: ${END_DATE_TIME}                               |"    | tee -a ${LOG_FILE_NAME}
+        echo "+-------------------------------------------------------------+" | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo "#####################################################################################" | tee -a ${LOG_FILE_NAME}
+        echo "#####################################################################################" | tee -a ${LOG_FILE_NAME}
+        echo "#####################################################################################" | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        
+        touch /var/lock/subsys/dbora_rac_10g
+        
+        ;;
+
+stop)
+
+        echo " "
+        echo "+----------------------------------------+"
+        echo "| ************************************** |"
+        echo "| >>>>>>>>>>   STOP PROCESS   <<<<<<<<<< |"
+        echo "| ************************************** |"
+        echo "+----------------------------------------+"
+        echo " "
+        
+        
+        echo "Subject: [$HOSTNAME_SHORT_UPPER] - ${EMAIL_SUBJECT_TITLE} - (STOP at $START_DATE_TIME)" | /usr/lib/sendmail -v dba@idevelopment.info
+        
+        
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "+-------------------------------------------------------------+" | tee -a ${LOG_FILE_NAME}
+        echo "|                +------------------------+                   |" | tee -a ${LOG_FILE_NAME}
+        echo "|                |---   STOP PROCESS   ---|                   |" | tee -a ${LOG_FILE_NAME}
+        echo "|                +------------------------+                   |" | tee -a ${LOG_FILE_NAME}
+        echo "|                                                             |" | tee -a ${LOG_FILE_NAME}
+        echo "|                         [ BEGIN ]                           |" | tee -a ${LOG_FILE_NAME}
+        echo "|                                                             |" | tee -a ${LOG_FILE_NAME}
+        echo "| START_TIME: ${START_DATE_TIME}                             |"  | tee -a ${LOG_FILE_NAME}
+        echo "+-------------------------------------------------------------+" | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo "SCRIPT VARIABLES"                                                | tee -a ${LOG_FILE_NAME}
+        echo "---------------------------------------------------------------" | tee -a ${LOG_FILE_NAME}
+        echo "SCRIPT_NAME            : ${SCRIPT_NAME_FULL}"                    | tee -a ${LOG_FILE_NAME}
+        echo "SCRIPT_NAME            : ${SCRIPT_NAME}"                         | tee -a ${LOG_FILE_NAME}
+        echo "SCRIPT_NAME_NOEXT      : ${SCRIPT_NAME_NOEXT}"                   | tee -a ${LOG_FILE_NAME}
+        echo "VERSION                : ${VERSION}"                             | tee -a ${LOG_FILE_NAME}
+        echo "LOG_FILE_NAME          : ${LOG_FILE_NAME}"                       | tee -a ${LOG_FILE_NAME}
+        echo "START_TIME             : ${START_DATE_TIME}"                     | tee -a ${LOG_FILE_NAME}
+        echo "HOSTNAME               : ${HOSTNAME}"                            | tee -a ${LOG_FILE_NAME}
+        echo "ORACLE_BASE            : ${ORACLE_BASE}"                         | tee -a ${LOG_FILE_NAME}
+        echo "ORACLE_HOME            : ${ORACLE_HOME}"                         | tee -a ${LOG_FILE_NAME}
+        echo "ORA_CRS_HOME           : ${ORA_CRS_HOME}"                        | tee -a ${LOG_FILE_NAME}
+        echo "ORACLE_OWNER           : ${ORACLE_OWNER}"                        | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo "ORACLE RAC COMPONENT NAMES"                                      | tee -a ${LOG_FILE_NAME}
+        echo "---------------------------------------------------------------" | tee -a ${LOG_FILE_NAME}
+        echo "RAC_ORACLE_DATABASE    : ${RAC_ORACLE_DATABASE}"                 | tee -a ${LOG_FILE_NAME}
+        echo "RAC_ORACLE_INSTANCE    : ${RAC_ORACLE_INSTANCE}"                 | tee -a ${LOG_FILE_NAME}
+        echo "RAC_NODE_NAME          : ${RAC_NODE_NAME}"                       | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo "ACTIONS"                                                         | tee -a ${LOG_FILE_NAME}
+        echo "---------------------------------------------------------------" | tee -a ${LOG_FILE_NAME}
+        
+        chown oracle:oinstall ${LOG_FILE_NAME}
+
+        echo " "
+        echo "+---------------------------------------------------+"
+        echo "| About to stop the Oracle Intelligent Agent.       |"
+        echo "+---------------------------------------------------+"
+        echo " "
+        
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "[STOP] : $TOUCH_DATE : Stopping Oracle Intelligent Agent."     | tee -a ${LOG_FILE_NAME}
+                
+        su - $ORACLE_OWNER -c "${CUSTOM_ORACLE_BIN_DIR}/oem10g_ctl.ksh stop agent" | tee -a ${LOG_FILE_NAME}
+                
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "[STOP] : $TOUCH_DATE : Stopped Oracle Intelligent Agent." | tee -a ${LOG_FILE_NAME}
+
+
+        echo " "
+        echo "+---------------------------------------------------+"
+        echo "| About to stop Oracle instance.                    |"
+        echo "+---------------------------------------------------+"
+        echo " "
+        
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "[STOP] : $TOUCH_DATE : Stopping Oracle instance - [${RAC_ORACLE_INSTANCE}]."  | tee -a ${LOG_FILE_NAME}
+        
+        su - $ORACLE_OWNER -c "$ORACLE_HOME/bin/srvctl stop instance -i ${RAC_ORACLE_INSTANCE} -d ${RAC_ORACLE_DATABASE}" | tee -a ${LOG_FILE_NAME}
+        
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "[STOP] : $TOUCH_DATE : Stopped Oracle instance - [${RAC_ORACLE_INSTANCE}]." | tee -a ${LOG_FILE_NAME}
+
+
+        echo " "
+        echo "+--------------------------------------------------------+"
+        echo "| About to stop the ASM component.                       |"
+        echo "+--------------------------------------------------------+"
+        echo " "
+        
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "[STOP] : $TOUCH_DATE : Stopping ASM component - [${RAC_NODE_NAME}]." | tee -a ${LOG_FILE_NAME}
+        
+        su - $ORACLE_OWNER -c "$ORACLE_HOME/bin/srvctl stop asm -n ${RAC_NODE_NAME}" | tee -a ${LOG_FILE_NAME}
+        
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "[STOP] : $TOUCH_DATE : Stopped ASM component - [${RAC_NODE_NAME}]." | tee -a ${LOG_FILE_NAME}
+
+
+        echo " "
+        echo "+-------------------------------------------------------+"
+        echo "| About to stop the nodeapps component.                 |"
+        echo "+-------------------------------------------------------+"
+        echo " "
+        
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "[STOP] : $TOUCH_DATE : Stopping nodeapps component - [${RAC_NODE_NAME}]." | tee -a ${LOG_FILE_NAME}
+        
+        su - $ORACLE_OWNER -c "$ORACLE_HOME/bin/srvctl stop nodeapps -n ${RAC_NODE_NAME}" | tee -a ${LOG_FILE_NAME}
+        
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "[STOP] : $TOUCH_DATE : Stopped nodeapps component - [${RAC_NODE_NAME}]." | tee -a ${LOG_FILE_NAME}
+
+
+        echo " "
+        echo "+-------------------------------------------------------+"
+        echo "| About to stop Oracle Clusterware.                     |"
+        echo "+-------------------------------------------------------+"
+        echo " "
+        
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "[STOP] : $TOUCH_DATE : Stopping Oracle Clusterware." | tee -a ${LOG_FILE_NAME}
+        
+        ${ORA_CRS_HOME}/bin/crsctl stop crs
+        
+        TOUCH_DATE=`date "+%m/%d/%Y %H:%M:%S"`
+        echo "[STOP] : $TOUCH_DATE : Stopped Oracle Clusterware." | tee -a ${LOG_FILE_NAME}
+
+
+        END_DATE_TIME=`date "+%m/%d/%Y %H:%M:%S"`
+        echo " " | tee -a ${LOG_FILE_NAME}
+        echo "+-------------------------------------------------------------+" | tee -a ${LOG_FILE_NAME}
+        echo "|                +------------------------+                   |" | tee -a ${LOG_FILE_NAME}
+        echo "|                |---   STOP PROCESS   ---|                   |" | tee -a ${LOG_FILE_NAME}
+        echo "|                +------------------------+                   |" | tee -a ${LOG_FILE_NAME}
+        echo "|                                                             |" | tee -a ${LOG_FILE_NAME}
+        echo "|                         [ END ]                             |" | tee -a ${LOG_FILE_NAME}
+        echo "|                                                             |" | tee -a ${LOG_FILE_NAME}
+        echo "| END_TIME: ${END_DATE_TIME}                               |"    | tee -a ${LOG_FILE_NAME}
+        echo "+-------------------------------------------------------------+" | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo "#####################################################################################" | tee -a ${LOG_FILE_NAME}
+        echo "#####################################################################################" | tee -a ${LOG_FILE_NAME}
+        echo "#####################################################################################" | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        echo " "                                                               | tee -a ${LOG_FILE_NAME}
+        
+        rm -f /var/lock/subsys/dbora_rac_10g
+        
+        ;;
+
+*)
+
+        echo $"Usage: $SCRIPT_NAME_NOEXT {start|stop}"
+        exit 1
+
+esac
+
+
+echo " "
+echo "+----------------------+"
+echo "| ENDING ORACLE SCRIPT |"
+echo "+----------------------+"
+echo " "
+
+exit

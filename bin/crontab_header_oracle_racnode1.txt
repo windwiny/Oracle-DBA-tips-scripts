@@ -1,0 +1,40 @@
+# +-----------------------------------------------------------------------+
+# | RECORD FORMAT                                                         |
+# | -------------                                                         |
+# | minute(0-59) hour(0-23) day(1-31) month(1-12) weekday(0-6  0=Sunday)  |
+# +-----------------------------------------------------------------------+
+#
+# +---------------------------------------------------------+------------------------+
+# | Archive all Oracle log files for a given instance       | Weekly at 11:45 p.m.   |
+# +---------------------------------------------------------+------------------------+
+45 23 * * 6 /u01/app/oracle/dba_scripts/bin/archive_oracle_log_files.ksh racdb racdb1 listener_racnode1 > /u01/app/oracle/dba_scripts/log/archive_oracle_log_files_racdb1_RACNODE1.job 2>&1
+#
+# +---------------------------------------------------------+------------------------+
+# | Online (hot) Full Oracle Physical Backup (RMAN)         | Daily at 11:00 p.m.    |
+# +---------------------------------------------------------+------------------------+
+00 23 * * * /u01/app/oracle/dba_scripts/bin/rman_backup_online_full.ksh racdb1 racdb1 backup_admin backup_admin_pwd 2 catalog catdb rman rman_pwd > /u01/app/oracle/dba_scripts/log/rman_backup_online_full_racdb1_backup_admin_RACNODE1.job 2>&1
+#
+# +---------------------------------------------------------+------------------------+
+# | Full Oracle Logical Backup (Data Pump)                  | Daily at 3:00 a.m.     |
+# +---------------------------------------------------------+------------------------+
+00 03 * * * /u01/app/oracle/dba_scripts/bin/dpump_backup_full.ksh racdb1 racdb1 backup_admin backup_admin_pwd DPUMP_DUMP_DIR DPUMP_LOG_DIR 2 > /u01/app/oracle/dba_scripts/log/dpump_backup_full_racdb1_backup_admin_RACNODE1.job 2>&1
+#
+# +----------------------------------------------------------------------------------+
+# |                OBSOLETE OR ORACLE STANDARD EDITION ENTRIES                       |
+# +----------------------------------------------------------------------------------+
+#
+# +---------------------------------------------------------+------------------------+
+# | Full Oracle Logical Backup (Export)                     | Daily at 5:00 a.m.     |
+# +---------------------------------------------------------+------------------------+
+# [OBSOLETE - USE DATA PUMP] 00 05 * * * /u01/app/oracle/dba_scripts/bin/export_backup_full.ksh racdb1 racdb1 backup_admin backup_admin_pwd /u03/oraexp/racdb 2 > /u01/app/oracle/dba_scripts/log/export_backup_full_racdb1_backup_admin_RACNODE1.job 2>&1
+#
+# +---------------------------------------------------------+------------------------+
+# | Manually Switch the Current Online Redo Log File        | Daily every 15 minutes |
+# +---------------------------------------------------------+------------------------+
+# [ONLY REQUIRED WITH ORACLE STANDARD EDITION] 05,20,35,50 * * * * /u01/app/oracle/dba_scripts/bin/switch_log_file.ksh racdb1 racdb1 backup_admin backup_admin_pwd > /u01/app/oracle/dba_scripts/log/switch_log_file_racdb1_backup_admin_RACNODE1.job 2>&1
+#
+# +---------------------------------------------------------+------------------------+
+# | Purge Obsolete Archived Redo Log Files From Standby DB  | Daily at 7:00 a.m.     |
+# +---------------------------------------------------------+------------------------+
+# [ONLY REQUIRED WITH ORACLE STANDARD EDITION] 00 07 * * * /u01/app/oracle/dba_scripts/bin/purge_archived_logs.ksh racdb1 racdb1 backup_admin backup_admin_pwd 5 > /u01/app/oracle/dba_scripts/log/purge_archived_logs_racdb1_backup_admin_RACNODE1.job 2>&1
+#
